@@ -1,5 +1,31 @@
-import re
 import tensorflow as tf
+from hlp.utils import text_split
+
+
+def tokenize_and_encode(texts: list, dict_path: str, max_len: int,
+                        num_words: int, unk_token: str = "<unk>"):
+    """
+    用于将文本序列集合转化为token序列
+    :param texts: 文本序列列表
+    :param dict_path: 字典保存路径
+    :param max_len: 文本最大长度
+    :param num_words:最多保存词汇数量
+    :param unk_token: 未登录词
+    :return texts: 处理好的文本token序列
+    :return tokenizer: tokenizer
+    """
+    tokenizer = tf.keras.preprocessing.text.Tokenizer(filters="", oov_token=unk_token, num_words=num_words)
+    tokenizer.fit_on_texts(texts)
+    texts = tokenizer.texts_to_sequences(texts)
+    texts = tf.keras.preprocessing.sequence.pad_sequences(texts, maxlen=max_len, padding="post")
+
+    with open(dict_path, 'w', encoding="utf-8") as dict_file:
+        dict_file.write(tokenizer.to_json())
+
+    return texts, tokenizer
+
+###################################################################
+###################################################################
 
 
 def split_and_encode(sentences, mode, word_index):
@@ -45,7 +71,7 @@ def split_sentence(line, mode):
     elif mode.lower() == "en_char":
         return _split_sentence_en_char(line)
     elif mode.lower() == "las_cn":
-        return _split_sentence_las_cn(line)
+        return _split_sentence_las_cn_char(line)
     elif mode.lower() == "las_en_word":
         return _split_sentence_las_en_word(line)
     elif mode.lower() == "las_en_char":
@@ -66,85 +92,50 @@ def split_sentences(sentences, mode):
 
 
 def _split_sentence_en_word(s):
-    s = s.lower().strip()
-    # 在单词与跟在其后的标点符号之间插入一个空格
-    # 例如： "he is a boy." => "he is a boy ."
-    s = re.sub(r"([?.!,])", r" \1 ", s)  # 切分断句的标点符号
-    s = re.sub(r'[" "]+', " ", s)  # 合并多个空格
-
-    # 除了 (a-z, A-Z, ".", "?", "!", ",")外的将所有字符替换为空格
-    s = re.sub(r"[^a-zA-Z?.!,]+", " ", s)
-    s = s.strip()
-    return s
+    result = text_split.split_en_word(s)
+    return result
 
 
 def _split_sentence_en_char(s):
-    s = s.lower().strip()
-
-    result = ""
-    for i in s:
-        if i == " ":
-            result += "<space> "
-        else:
-            result += i + " "
-    return result.strip()
+    result = text_split.split_en_char(s)
+    return result
 
 
 def _split_sentence_las_en_char(s):
-    s = s.lower().strip()
-    s = ' '.join(s)
-    s = re.sub(r"([?.!,])", r" \1 ", s)  # 切分断句的标点符号
-    s = re.sub(r'[" "]+', " ", s)  # 合并多个空格
-
-    # 除了 (a-z, A-Z, ".", "?", "!", ",")，将所有字符替换为空格
-    s = re.sub(r"[^a-zA-Z?.!,]+", " ", s)
-
-    s = s.strip()
+    s = text_split.split_en_char(s)
 
     # 给句子加上开始和结束标记
     # 以便模型知道何时开始和结束预测
-    s = '<start> ' + s + ' <end>'
+    s.insert(0, '<start>')
+    s.append('<end>')
 
     return s
 
 
 def _split_sentence_las_en_word(s):
-    s = s.lower().strip()
-    # 在单词与跟在其后的标点符号之间插入一个空格
-    # 例如： "he is a boy." => "he is a boy ."
-    s = re.sub(r"([?.!,])", r" \1 ", s)  # 切分断句的标点符号
-    s = re.sub(r'[" "]+', " ", s)  # 合并多个空格
+    s = text_split.split_en_word(s)
 
-    # 除了 (a-z, A-Z, ".", "?", "!", ",")外的将所有字符替换为空格
-    s = re.sub(r"[^a-zA-Z?.!,]+", " ", s)
-    s = s.strip()
     # 给句子加上开始和结束标记
     # 以便模型知道何时开始和结束预测
-    s = '<start> ' + s + ' <end>'
+    s.insert(0, '<start>')
+    s.append('<end>')
+
     return s
 
 
 def _split_sentence_cn(s):
-    s = s.lower().strip()
-
-    s = [c for c in s]
-    s = ' '.join(s)
-    s = re.sub(r'[" "]+', " ", s)  # 合并多个空格
-    s = s.strip()
-
-    return s
+    result = text_split.split_zh_char(s)
+    return result
 
 
-def _split_sentence_las_cn(s):
-    s = s.lower().strip()
+def _split_sentence_las_cn_char(s):
+    s = text_split.split_zh_char(s)
 
-    s = [c for c in s]
-    s = ' '.join(s)
-    s = re.sub(r'[" "]+', " ", s)  # 合并多个空格
-    s = s.strip()
     # 给句子加上开始和结束标记
     # 以便模型知道何时开始和结束预测
-    s = '<start> ' + s + ' <end>'
+    s.insert(0, '<start>')
+    s.append('<end>')
+
     return s
 
 
@@ -165,16 +156,16 @@ def get_label_and_length(text_int_sequences_list, max_label_length):
     return target_tensor_numpy, target_length
 
 
-def tokenize_and_encode(texts):
-    """ 对文本进行tokenize和编码
-
-    :param texts: 已经用空格分隔的文本列表
-    :return: 文本编码序列, tokenizer
-    """
-    tokenizer = tf.keras.preprocessing.text.Tokenizer(filters='')  # 无过滤字符
-    tokenizer.fit_on_texts(texts)
-    text_int_sequences = tokenizer.texts_to_sequences(texts)
-    return text_int_sequences, tokenizer
+# def tokenize_and_encode(texts):
+#     """ 对文本进行tokenize和编码
+#
+#     :param texts: 已经用空格分隔的文本列表
+#     :return: 文本编码序列, tokenizer
+#     """
+#     tokenizer = tf.keras.preprocessing.text.Tokenizer(filters='')  # 无过滤字符
+#     tokenizer.fit_on_texts(texts)
+#     text_int_sequences = tokenizer.texts_to_sequences(texts)
+#     return text_int_sequences, tokenizer
 
 
 # 将输出token id序列解码为token序列
